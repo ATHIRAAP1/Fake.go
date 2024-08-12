@@ -3,43 +3,62 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"os"
 
-	"github.com/bxcodec/faker/v3"
+	"github.com/brianvoe/gofakeit/v6"
 )
 
-type Person struct {
-	Name  string `faker:"name"`
-	Age   int    `faker:"-"`
-	Email string `faker:"email"`
+type Config struct {
+	Count int `json:"count"`
 }
 
-func generateFakeData(jsonStructure string) (Person, error) {
-	var person Person
+type person struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Age   int    `json:"age"`
+}
 
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStructure), &jsonData); err != nil {
-		return person, err
+func GenerateFakeData(count int) []person {
+	var data []person
+	for i := 0; i < count; i++ {
+		data = append(data, person{
+			Name:  gofakeit.Name(),
+			Email: gofakeit.Email(),
+			Age:   gofakeit.Number(18, 60),
+		})
 	}
+	return data
+}
 
-	if err := faker.FakeData(&person); err != nil {
-		return person, err
+func LoadConfig(filename string) (Config, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return Config{}, err
 	}
+	defer file.Close()
 
-	return person, nil
+	var config Config
+	err = json.NewDecoder(file).Decode(&config)
+	if err != nil {
+		return Config{}, err
+	}
+	return config, nil
 }
 
 func main() {
-	jsonStructure := `{
-        "name": "string",
-        "age": "int",
-        "email": "string"
-    }`
-
-	person, err := generateFakeData(jsonStructure)
+	configFile := "config.json"
+	config, err := LoadConfig(configFile)
 	if err != nil {
-		log.Fatalf("Error generating fake data: %v", err)
+		fmt.Println("Error loading configuration:", err)
+		return
 	}
 
-	fmt.Printf("Generated Fake Data: %+v\n", person)
+	fakeData := GenerateFakeData(config.Count)
+	jsonData, err := json.MarshalIndent(fakeData, "", "  ")
+	if err != nil {
+		fmt.Println("Error generating JSON:", err)
+		return
+	}
+
+	fmt.Println(string(jsonData))
 }
