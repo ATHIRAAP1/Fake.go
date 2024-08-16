@@ -2,63 +2,87 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"os"
+	"io/ioutil"
+	"log"
+	"math/rand"
+	"net/http"
+	"time"
 
-	"github.com/brianvoe/gofakeit/v6"
+	"github.com/bxcodec/faker/v3"
+	"github.com/gin-gonic/gin"
 )
 
-type Config struct {
-	Count int `json:"count"`
+type FieldType string
+
+const (
+	String FieldType = "string"
+	Int    FieldType = "int"
+)
+
+type Schema struct {
+	Fields map[string]FieldType `json:"fields"`
 }
 
-type person struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Age   int    `json:"age"`
-}
-
-func GenerateFakeData(count int) []person {
-	var data []person
-	for i := 0; i < count; i++ {
-		data = append(data, person{
-			Name:  gofakeit.Name(),
-			Email: gofakeit.Email(),
-			Age:   gofakeit.Number(18, 60),
-		})
-	}
-	return data
-}
-
-func LoadConfig(filename string) (Config, error) {
-	file, err := os.Open(filename)
+func loadSchema(filename string) (*Schema, error) {
+	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return Config{}, err
+		return nil, err
 	}
-	defer file.Close()
 
-	var config Config
-	err = json.NewDecoder(file).Decode(&config)
+	var schema Schema
+	err = json.Unmarshal(data, &schema)
 	if err != nil {
-		return Config{}, err
+		return nil, err
 	}
-	return config, nil
+
+	return &schema, nil
+}
+
+func generateFakeData(schema *Schema, numRecords int) ([]map[string]interface{}, error) {
+	var records []map[string]interface{}
+
+	for i := 0; i < numRecords; i++ {
+		record := make(map[string]interface{})
+		for field, fieldType := range schema.Fields {
+			switch fieldType {
+			case String:
+				record[field] = faker.Word()
+			case Int:
+				record[field] = rand.Intn(100)
+			}
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func getFakeData(c *gin.Context) {
+	schema, err := loadSchema("schema.json")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load schema"})
+		return
+	}
+
+	numRecords := 20
+	records, err := generateFakeData(schema, numRecords)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate fake data"})
+		return
+	}
+
+	c.JSON(http.StatusOK, records)
 }
 
 func main() {
-	configFile := "config.json"
-	config, err := LoadConfig(configFile)
-	if err != nil {
-		fmt.Println("Error loading configuration:", err)
-		return
-	}
+	rand.Seed(time.Now().UnixNano())
 
-	fakeData := GenerateFakeData(config.Count)
-	jsonData, err := json.MarshalIndent(fakeData, "", "  ")
-	if err != nil {
-		fmt.Println("Error generating JSON:", err)
-		return
-	}
+	router := gin.Default()
 
-	fmt.Println(string(jsonData))
+	router.GET("/fake-data", getFakeData)
+
+	log.Println("Starting server on :8083")
+	if err := router.Run(":8083"); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }

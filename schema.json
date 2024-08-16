@@ -1,0 +1,7 @@
+{
+  "fields": {
+    "name": "string",
+    "age": "int",
+    "email": "string"
+  }
+}
